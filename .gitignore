@@ -205,6 +205,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-# Custom Environment Files
+# Custom Environment Files (SEGURANÇA DA API KEY)
 code.env
-*.env
