@@ -1,0 +1,14 @@
+streamlit
+pandas
+numpy
+scipy
+statsmodels
+scikit-learn
+plotly
+matplotlib
+seaborn
+reportlab
+openai
+python-dotenv
+xlsxwriter
+openpyxl
