@@ -73,6 +73,8 @@ Anderson Portella (Production Engineer, Transpetro / Ph.D. Candidate, UFF)
 
 Prof. Dra. Miriam Rocha
 
+Eng. Robson Souza
+
 Prof. Dr. Marcos dos Santos
 
 Prof. Dr. Carlos Francisco Simões Gomes
@@ -80,5 +82,5 @@ Prof. Dr. Carlos Francisco Simões Gomes
 Institutions:
 
 Universidade Federal Fluminense (UFF)
-
 Universidade Federal do Rio Grande do Norte (UFRN)
+Instituto Militar de Engenharia (IME)
