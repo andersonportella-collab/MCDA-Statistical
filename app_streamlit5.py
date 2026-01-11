@@ -1,11 +1,9 @@
-# app_streamlit.py
+# app_streamlit5.py
 """
 MCDA Statistical Analysis — Streamlit bilingual app (Portuguese / English)
 Complete app with: descriptive stats, normality tests, correlation, ANOVA/Tukey,
 non-parametric tests, regression, Monte Carlo, export (Excel/PDF/JSON) and
 manual AI analysis + chat (OpenAI).
-Place UFF_UFRN_brasao.png in same folder for logo in UI and PDF.
-Adapted for Anderson Portella
 """
 
 import streamlit as st
@@ -44,19 +42,19 @@ except Exception:
 # -----------------------
 # Config / Logo path
 # -----------------------
-LOGO_PATH = "UFF_UFRN_brasao.png"  # coloque o arquivo no mesmo diretório
+LOGO_PATH = "UFF_UFRN_brasao.png"  # Certifique-se que este arquivo existe no diretório
 
-# CORREÇÃO AQUI: Substituído \n por <br/> para compatibilidade com ReportLab
 INSTITUTION_LINE = (
     "Universidade Federal Fluminense – Programa de Pós-Graduação em Engenharia de Produção<br/>"
-    "Universidade Federal do Rio Grande do Norte - Departamento de Engenharia de Produção"
+    "Universidade Federal do Rio Grande do Norte - Departamento de Engenharia de Produção<br/>"
+    "Instituto Militar de Engenharia - Seção de Engenharia de Fortificação e Construção"
 )
 
 # -----------------------
-# Bilingual text - CORRIGIDO: Nomes completos sem abreviações
+# Bilingual text
 # -----------------------
 TEXT = {
-    "app_title": {"Portuguese": "🤖 Análise Estatística MCDA — UFF/UFRN", "English": "🤖 MCDA Statistical Analysis — UFF/UFRN"},
+    "app_title": {"Portuguese": "🤖 Análise Estatística MCDA — UFF/UFRN/IME", "English": "🤖 MCDA Statistical Analysis — UFF/UFRN/IME"},
     "upload": {"Portuguese": "Carregue arquivo Excel ou CSV", "English": "Upload Excel or CSV"},
     "download_template": {"Portuguese": "Baixar template Excel", "English": "Download Excel template"},
     "load_example": {"Portuguese": "Carregar exemplo (pequeno)", "English": "Load example (small)"},
@@ -152,7 +150,6 @@ def descriptive_stats(df):
     nums = df.select_dtypes(include=[np.number])
     if nums.shape[1] == 0:
         return pd.DataFrame()
-    # Usando nomes completos das colunas
     desc = nums.agg(['mean','median','std','var','min','max']).T
     desc['cv'] = desc['std'] / desc['mean'].replace(0, np.nan)
     desc['skew'] = nums.skew()
@@ -162,8 +159,6 @@ def descriptive_stats(df):
     except Exception:
         mode_df = pd.Series([np.nan]*nums.shape[1], index=nums.columns)
     desc['mode'] = mode_df
-    
-    # Renomeando colunas para nomes completos
     desc = desc.reset_index().rename(columns={'index':'criterion'})
     return desc
 
@@ -209,13 +204,6 @@ def kruskal_test(df, group_col, value_col):
     stat, p = stats.kruskal(*groups)
     return {"stat": float(stat), "pvalue": float(p)}
 
-def mannwhitney_test(df, group_col, value_col):
-    groups = [g[value_col].dropna().values for _, g in df.groupby(group_col)]
-    if len(groups) != 2:
-        return {"stat": np.nan, "pvalue": np.nan, "error":"Requires exactly 2 groups"}
-    stat, p = stats.mannwhitneyu(groups[0], groups[1], alternative='two-sided')
-    return {"stat": float(stat), "pvalue": float(p)}
-
 def linear_regression(df, y_col, x_cols):
     X = df[x_cols].astype(float)
     Xc = sm.add_constant(X, has_constant='add')
@@ -223,7 +211,6 @@ def linear_regression(df, y_col, x_cols):
     model = sm.OLS(y, Xc, missing='drop').fit()
     fitted = pd.Series(model.fittedvalues, index=y.dropna().index)
     resid = pd.Series(model.resid, index=fitted.index)
-    # diagnostics
     try:
         bp_test = het_breuschpagan(resid, model.model.exog)
         bp_p = float(bp_test[1])
@@ -246,7 +233,6 @@ def linear_regression(df, y_col, x_cols):
         "durbin_watson": dw,
         "max_cooks_distance": float(np.nanmax(cooks) if len(cooks)>0 else np.nan)
     }
-    # VIF
     vif = {}
     try:
         X_no_const = Xc.loc[:, Xc.columns != 'const']
@@ -266,7 +252,6 @@ def monte_carlo(df_numeric, n_iter=1000, noise_frac=0.05):
             rng = pert[c].max() - pert[c].min()
             sigma = noise_frac * (rng if rng > 0 else (pert[c].std() if pert[c].std()>0 else 1.0))
             pert[c] = pert[c] + np.random.normal(0, sigma, size=pert.shape[0])
-        # normalize by column sums (avoid division by zero)
         denom = pert.sum(axis=0).replace(0, np.nan)
         norm = pert.div(denom, axis=1).fillna(0)
         score = norm.sum(axis=1).values
@@ -352,20 +337,13 @@ def build_excel_bytes(sheets_dict):
             safe = str(name)[:31]
             try:
                 if isinstance(obj, pd.DataFrame):
-                    # Renomear colunas para nomes completos antes de exportar
                     obj_renamed = obj.copy()
                     if 'descriptive' in safe.lower():
                         rename_map = {
-                            'mean': 'Média',
-                            'median': 'Mediana',
-                            'std': 'Desvio Padrão',
-                            'var': 'Variância',
-                            'min': 'Mínimo',
-                            'max': 'Máximo',
-                            'cv': 'Coeficiente de Variação',
-                            'skew': 'Assimetria',
-                            'kurtosis': 'Curtose',
-                            'mode': 'Moda'
+                            'mean': 'Média', 'median': 'Mediana', 'std': 'Desvio Padrão',
+                            'var': 'Variância', 'min': 'Mínimo', 'max': 'Máximo',
+                            'cv': 'Coeficiente de Variação', 'skew': 'Assimetria',
+                            'kurtosis': 'Curtose', 'mode': 'Moda'
                         }
                         obj_renamed = obj_renamed.rename(columns=rename_map)
                     obj_renamed.to_excel(writer, sheet_name=safe, index=True)
@@ -401,11 +379,8 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
             pass
 
     story.append(Paragraph(f"<b>{t('pdf_title', lang)}</b>", heading))
-    
-    # CORREÇÃO: Garante que INSTITUTION_LINE não tenha '\n' brutos se usados em Paragraph
     inst_text = INSTITUTION_LINE.replace("\n", "<br/>") 
     story.append(Paragraph(f"{inst_text}", ParagraphStyle("inst", parent=styles["Normal"], alignment=1)))
-    
     story.append(Spacer(1, 6))
     story.append(Paragraph(f"{t('pdf_subtitle', lang)} — {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", small))
     story.append(Spacer(1, 12))
@@ -418,19 +393,11 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
     story.append(Paragraph("<b>Descriptive statistics / Estatística descritiva</b>", styles["Heading3"]))
     try:
         desc_show = desc_df.reset_index().head(10)
-        # Renomear colunas para nomes completos no PDF
         rename_map = {
-            'mean': 'Média',
-            'median': 'Mediana',
-            'std': 'Desvio Padrão',
-            'var': 'Variância',
-            'min': 'Mínimo',
-            'max': 'Máximo',
-            'cv': 'Coeficiente de Variação',
-            'skew': 'Assimetria',
-            'kurtosis': 'Curtose',
-            'mode': 'Moda',
-            'criterion': 'Critério'
+            'mean': 'Média', 'median': 'Mediana', 'std': 'Desvio Padrão',
+            'var': 'Variância', 'min': 'Mínimo', 'max': 'Máximo',
+            'cv': 'Coeficiente de Variação', 'skew': 'Assimetria',
+            'kurtosis': 'Curtose', 'mode': 'Moda', 'criterion': 'Critério'
         }
         desc_show = desc_show.rename(columns=rename_map)
         data_table = [desc_show.columns.tolist()] + desc_show.values.tolist()
@@ -443,12 +410,7 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
     story.append(Paragraph("<b>Normality tests / Testes de normalidade</b>", styles["Heading3"]))
     try:
         norm_show = normal_df.reset_index().head(20)
-        # Renomear colunas para nomes completos
-        norm_show = norm_show.rename(columns={
-            'shapiro_stat': 'Estatística Shapiro-Wilk',
-            'shapiro_p': 'Valor-p Shapiro-Wilk',
-            'criterion': 'Critério'
-        })
+        norm_show = norm_show.rename(columns={'shapiro_stat': 'Estatística Shapiro-Wilk', 'shapiro_p': 'Valor-p Shapiro-Wilk', 'criterion': 'Critério'})
         data_norm = [norm_show.columns.tolist()] + norm_show.values.tolist()
         n_tbl = Table(data_norm, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)])
         story.append(n_tbl)
@@ -480,15 +442,10 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
 
     story.append(Paragraph("<b>Regression / Regressão</b>", styles["Heading3"]))
     if reg_metrics:
-        # Criar nomes completos para as métricas de regressão
         reg_names_map = {
-            'r2': 'R-quadrado',
-            'adj_r2': 'R-quadrado Ajustado',
-            'mse': 'Erro Quadrático Médio',
-            'mae': 'Erro Absoluto Médio',
-            'breusch_pagan_p': 'Valor-p Breusch-Pagan',
-            'durbin_watson': 'Estatística Durbin-Watson',
-            'max_cooks_distance': 'Máxima Distância de Cook'
+            'r2': 'R-quadrado', 'adj_r2': 'R-quadrado Ajustado', 'mse': 'Erro Quadrático Médio',
+            'mae': 'Erro Absoluto Médio', 'breusch_pagan_p': 'Valor-p Breusch-Pagan',
+            'durbin_watson': 'Estatística Durbin-Watson', 'max_cooks_distance': 'Máxima Distância de Cook'
         }
         reg_kv = [[reg_names_map.get(k, k), str(v)] for k,v in reg_metrics.items()]
         story.append(Table(reg_kv, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)]))
@@ -500,11 +457,7 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
     if mc_summary is not None:
         try:
             mc_show = mc_summary.head(20).reset_index()
-            mc_show = mc_show.rename(columns={
-                'mean_score': 'Pontuação Média',
-                'std_score': 'Desvio Padrão da Pontuação',
-                'index': 'Alternativa'
-            })
+            mc_show = mc_show.rename(columns={'mean_score': 'Pontuação Média', 'std_score': 'Desvio Padrão da Pontuação', 'index': 'Alternativa'})
             data_mc = [mc_show.columns.tolist()] + mc_show.values.tolist()
             story.append(Table(data_mc, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)]))
         except Exception:
@@ -514,8 +467,6 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
 
     story.append(Spacer(1,12))
     story.append(Paragraph("Generated by app_streamlit.py", small))
-    
-    # CORREÇÃO: Usando a variável corrigida inst_text
     story.append(Paragraph(inst_text, ParagraphStyle("inst", parent=styles["Normal"], alignment=1)))
     
     doc.build(story)
@@ -526,46 +477,28 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
 # -----------------------
 # OpenAI: setup, analyze & chat
 # -----------------------
-import os
-from dotenv import load_dotenv
-
 def setup_openai_client():
-    """
-    Tries to get API key from st.secrets or environment (.env).
-    Returns a OpenAI client instance or None.
-    """
     if OpenAI is None:
         return None
-
-    # 🔹 Força o carregamento do arquivo "code.env" (no mesmo diretório)
     
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     dotenv_path = os.path.join(BASE_DIR, "code.env")
-
     load_dotenv(dotenv_path)
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        # Tenta pegar dos segredos do Streamlit como fallback
         if "OPENAI_API_KEY" in st.secrets:
              api_key = st.secrets["OPENAI_API_KEY"]
         else:
-             st.error(f"🔑 Chave da OpenAI não encontrada no arquivo {dotenv_path} nem nos segredos.")
              return None
-
     try:
         client = OpenAI(api_key=api_key)
-        # st.success("✅ OpenAI configurado com sucesso.") # Comentado para poluir menos a UI
         return client
     except Exception as e:
         st.error(f"❌ Erro ao inicializar cliente OpenAI: {e}")
         return None
     
 def build_ai_prompt(lang, results_summary: dict):
-    """
-    Build a concise prompt for the model using the available results.
-    results_summary is a dict with keys like 'descriptive', 'anova', 'regression', 'montecarlo', 'correlation'
-    """
     is_pt = (lang == "Portuguese")
     header = "Analise e interpretação concisa dos resultados:" if is_pt else "Concise analysis and interpretation of the results:"
     instructions = (
@@ -574,41 +507,31 @@ def build_ai_prompt(lang, results_summary: dict):
          "Respond in English. Provide: 1) Short interpretation; 2) Key insights; 3) Practical recommendations.\n")
     )
     parts = [header, instructions]
-    # Descriptive
     if 'descriptive' in results_summary and not results_summary['descriptive'].empty:
         desc = results_summary['descriptive'].head(6).to_dict(orient='records')
-        parts.append(f"Descriptive (first rows): {desc}" if is_pt else f"Descriptive (first rows): {desc}")
-    # Correlation: strongest correlations
+        parts.append(f"Descriptive (first rows): {desc}")
     if 'correlation' in results_summary and not results_summary['correlation'].empty:
         corr = results_summary['correlation'].copy()
         corr_vals = corr.where(~np.eye(len(corr),dtype=bool)).abs().stack().sort_values(ascending=False).head(6).to_dict()
         parts.append(f"Top correlations (abs): {corr_vals}")
-    # ANOVA
     if 'anova' in results_summary and results_summary['anova'] is not None:
         try:
             pval = results_summary['anova']["PR(>F)"].iloc[0]
             parts.append(f"ANOVA p-value: {float(pval)}")
         except Exception:
             parts.append("ANOVA: present")
-    # Regression
     if 'regression' in results_summary and isinstance(results_summary['regression'], dict):
         parts.append(f"Regression metrics: {results_summary['regression']}")
-    # Monte Carlo
     if 'montecarlo' in results_summary and results_summary['montecarlo'] is not None:
         try:
             mc = results_summary['montecarlo'].head(3).reset_index().to_dict(orient='records')
             parts.append(f"Monte Carlo (top rows): {mc}")
         except Exception:
             parts.append("Monte Carlo: present")
-    # small note
     parts.append("Return a concise answer (max ~200-300 words).")
     return "\n\n".join(parts)
 
 def analyze_with_ai(client, lang, results_summary):
-    """
-    Calls OpenAI to produce a concise analysis based on results_summary.
-    Returns text.
-    """
     if client is None:
         return None
     prompt = build_ai_prompt(lang, results_summary)
@@ -625,10 +548,6 @@ def analyze_with_ai(client, lang, results_summary):
         return f"❌ AI analysis error: {e}"
 
 def chat_with_ai(client, lang, user_message):
-    """
-    Simple chat: includes system message with context = last analysis text (if exists)
-    and the last few messages saved in session_state['ai_chat_history'].
-    """
     if client is None:
         return {"error": "OpenAI client not available"}
     system_context = ""
@@ -639,9 +558,7 @@ def chat_with_ai(client, lang, user_message):
                "You are an analytical assistant. Use the following context to answer:\n")
     sys_content = sys_msg + system_context
     messages = [{"role":"system", "content": sys_content}]
-    # include recent chat history (user & assistant pairs)
     history = st.session_state.get("ai_chat_history", [])
-    # keep up to last 6 messages
     for m in history[-6:]:
         messages.append(m)
     messages.append({"role":"user", "content": user_message})
@@ -657,11 +574,12 @@ def chat_with_ai(client, lang, user_message):
         return {"error": str(e)}
 
 # -----------------------
-# Streamlit UI - CORRIGIDO: Botão único para download
+# Streamlit UI
 # -----------------------
 def main():
-    st.set_page_config(page_title="🤖MCDA Stats — UFF/UFRN", layout="wide")
-    # initialize session state variables for AI
+    st.set_page_config(page_title="🤖MCDA Stats — UFF/UFRN/IME", layout="wide")
+    
+    # Initialize session state variables
     if "ai_chat_history" not in st.session_state:
         st.session_state["ai_chat_history"] = []
     if "ai_last_analysis" not in st.session_state:
@@ -670,8 +588,6 @@ def main():
         st.session_state["ai_enabled"] = False
     if "uploaded_df" not in st.session_state:
         st.session_state["uploaded_df"] = None
-    
-    # NOVO: Inicializar session_state para armazenar resultados das análises
     if "analysis_results" not in st.session_state:
         st.session_state["analysis_results"] = {}
     if "selected_analyses" not in st.session_state:
@@ -685,20 +601,18 @@ def main():
     if "run_mc_clicked" not in st.session_state:
         st.session_state["run_mc_clicked"] = False
 
-    # sidebar: logo small + language + API help
+    # sidebar
     with st.sidebar:
-        # CORREÇÃO: Logo removido da sidebar para centralizar na página principal
         lang = st.selectbox("Idioma / Language", options=["Portuguese", "English"], index=0, help="Escolha o idioma")
         is_pt = (lang == "Portuguese")
 
-        # CORREÇÃO: Botão único para download do template
         template_bytes = get_template_bytes(lang)
         st.download_button(
             label=t("download_template", lang),
             data=template_bytes,
             file_name="mcda_template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="template_download"  # Chave única para evitar duplicação
+            key="template_download"
         )
         
         if st.button(t("load_example", lang)):
@@ -710,7 +624,7 @@ def main():
                 "Group": ["G1","G1","G2","G2"]
             })
             st.session_state['uploaded_df'] = df_example
-            st.session_state["analysis_results"] = {}  # Resetar resultados ao carregar novo dataset
+            st.session_state["analysis_results"] = {}
             st.success(t("load_example", lang) + " — OK")
 
         run_all = st.button(t("run_all", lang))
@@ -724,6 +638,7 @@ def main():
         - [Prof. Dr. Marcos dos Santos](https://www.linkedin.com/in/profmarcosdossantos/)
         - [Prof. Dr. Carlos Francisco Simões Gomes](https://www.linkedin.com/in/carlos-francisco-sim%C3%B5es-gomes-7284a3b/)        
         """)
+        
         client_test = setup_openai_client()
         if client_test is None:
             st.error("OpenAI API key not found.")
@@ -731,7 +646,27 @@ def main():
         else:
             st.success("OpenAI key detected — AI enabled")
 
-    # top title with central logo
+        # --- CORREÇÃO DO DOWNLOAD DO PDF MANUAL ---
+        pdf_filename = "Methodology_MCDA_Statistical_Analysis.pdf"
+        if os.path.exists(pdf_filename):
+            try:
+                with open(pdf_filename, "rb") as f:
+                    pdf_bytes_manual = f.read()
+                
+                st.download_button(
+                    label="📘 Baixar manual / Download manual",
+                    data=pdf_bytes_manual,
+                    file_name=pdf_filename,
+                    mime="application/pdf",
+                    key="download_method_pdf"
+                )
+            except Exception as e:
+                st.error(f"Error loading manual: {e}")
+        else:
+            st.info(f"Manual ({pdf_filename}) not found.")
+        # ------------------------------------------
+
+    # Main content
     st.markdown("<br>", unsafe_allow_html=True)
     if os.path.exists(LOGO_PATH):
         try:
@@ -742,17 +677,15 @@ def main():
             pass
 
     st.markdown(f"<h1 style='text-align:center;'>{t('app_title', lang)}</h1>", unsafe_allow_html=True)
-    # CORREÇÃO NA EXIBIÇÃO HTML: Aqui usamos <br> normal pois é HTML do Streamlit
     inst_html = INSTITUTION_LINE.replace("<br/>", "<br>")
     st.markdown(f"<p style='text-align:center; font-weight: bold;'>{inst_html}</p>", unsafe_allow_html=True)
 
-    # single file uploader (no duplication)
     uploaded = st.file_uploader(t("upload", lang), type=["xlsx","xls","csv"])
     if uploaded:
         try:
             df_loaded = read_upload(uploaded)
             st.session_state['uploaded_df'] = df_loaded
-            st.session_state["analysis_results"] = {}  # Resetar resultados ao carregar novo arquivo
+            st.session_state["analysis_results"] = {}
             st.success("File loaded" if not is_pt else "Arquivo carregado")
         except Exception as e:
             st.error(f"Error reading file: {e}")
@@ -762,11 +695,9 @@ def main():
         st.info("Please upload a spreadsheet or load the sample (sidebar). / Faça upload de um arquivo ou carregue o exemplo (barra lateral).")
         return
 
-    # preview
     st.subheader(t("data_preview", lang))
     st.dataframe(df.head())
 
-    # validation
     val = validate_matrix(df)
     if val['messages']:
         for m in val['messages']:
@@ -775,14 +706,12 @@ def main():
         st.error(t("no_numeric", lang))
         return
 
-    # detect numeric & categorical columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = [c for c in df.columns if c not in numeric_cols]
 
-    # choose which analyses to run - CORRIGIDO: Usando nomes completos
     st.sidebar.header("Analyses / Análises")
     
-    # Mapeamento de opções para nomes completos
+    # --- CORREÇÃO DA TROCA DE IDIOMA (Multiselect) ---
     analysis_options = {
         "desc": t("desc", lang),
         "norm": t("norm", lang),
@@ -793,61 +722,53 @@ def main():
         "mc": t("mc", lang)
     }
     
-    # Converter o dicionário para lista de opções com nomes completos
     option_labels = list(analysis_options.values())
     option_keys = list(analysis_options.keys())
-    
-    # Mapeamento reverso para obter a chave a partir do label
     reverse_mapping = {v: k for k, v in analysis_options.items()}
     
-    # Usar session_state para manter as análises selecionadas
-    if "selected_analysis_labels" not in st.session_state:
-        st.session_state["selected_analysis_labels"] = [analysis_options["desc"], analysis_options["norm"], analysis_options["corr"]]
+    # Armazenar as CHAVES (keys) no session_state, não os textos traduzidos
+    if "selected_analysis_keys" not in st.session_state:
+        st.session_state["selected_analysis_keys"] = ["desc", "norm", "corr"]
+
+    # Calcular quais labels devem aparecer marcados com base nas chaves salvas e idioma atual
+    current_defaults = [
+        analysis_options[k] for k in st.session_state["selected_analysis_keys"] 
+        if k in analysis_options
+    ]
     
     selected_labels = st.sidebar.multiselect(
         "Select analyses / Selecione análises", 
         options=option_labels,
-        default=st.session_state["selected_analysis_labels"]
+        default=current_defaults
     )
     
-    # Atualizar session_state com as seleções
-    st.session_state["selected_analysis_labels"] = selected_labels
+    # Atualizar session_state com as chaves correspondentes aos labels selecionados
+    st.session_state["selected_analysis_keys"] = [reverse_mapping[label] for label in selected_labels]
     
-    # Converter labels selecionados de volta para keys
-    options = [reverse_mapping[label] for label in selected_labels]
+    # Manter compatibilidade com variável 'options' usada abaixo
+    options = st.session_state["selected_analysis_keys"]
     st.session_state["selected_analyses"] = options
 
-    # run all option expands selection
     if run_all:
-        options = list(analysis_options.keys())
-        st.session_state["selected_analysis_labels"] = option_labels
-        st.session_state["selected_analyses"] = option_keys
-        # Forçar rerun para atualizar a interface
+        st.session_state["selected_analysis_keys"] = option_keys
         st.rerun()
+    # -------------------------------------------------
 
     results = st.session_state.get("analysis_results", {})
 
     st.header(t("results", lang))
 
-    # 1 Descriptive - CORRIGIDO: Nomes completos das colunas
+    # 1 Descriptive
     if "desc" in options:
         st.subheader(t("desc", lang))
         if 'descriptive' not in results or st.button("Recalcular Estatística Descritiva" if is_pt else "Recalculate Descriptive Statistics"):
             desc_df = descriptive_stats(df)
             if not desc_df.empty:
-                # Renomear colunas para nomes completos
                 rename_map = {
-                    'mean': t('stat_mean', lang),
-                    'median': t('stat_median', lang),
-                    'std': t('stat_std', lang),
-                    'var': t('stat_var', lang),
-                    'min': t('stat_min', lang),
-                    'max': t('stat_max', lang),
-                    'cv': t('stat_cv', lang),
-                    'skew': t('stat_skew', lang),
-                    'kurtosis': t('stat_kurtosis', lang),
-                    'mode': t('stat_mode', lang),
-                    'criterion': 'Critério' if lang == 'Portuguese' else 'Criterion'
+                    'mean': t('stat_mean', lang), 'median': t('stat_median', lang), 'std': t('stat_std', lang),
+                    'var': t('stat_var', lang), 'min': t('stat_min', lang), 'max': t('stat_max', lang),
+                    'cv': t('stat_cv', lang), 'skew': t('stat_skew', lang), 'kurtosis': t('stat_kurtosis', lang),
+                    'mode': t('stat_mode', lang), 'criterion': 'Critério' if lang == 'Portuguese' else 'Criterion'
                 }
                 desc_display = desc_df.rename(columns=rename_map)
                 st.dataframe(desc_display)
@@ -856,29 +777,21 @@ def main():
         elif 'descriptive' in results:
             desc_df = results['descriptive']
             rename_map = {
-                'mean': t('stat_mean', lang),
-                'median': t('stat_median', lang),
-                'std': t('stat_std', lang),
-                'var': t('stat_var', lang),
-                'min': t('stat_min', lang),
-                'max': t('stat_max', lang),
-                'cv': t('stat_cv', lang),
-                'skew': t('stat_skew', lang),
-                'kurtosis': t('stat_kurtosis', lang),
-                'mode': t('stat_mode', lang),
-                'criterion': 'Critério' if lang == 'Portuguese' else 'Criterion'
+                'mean': t('stat_mean', lang), 'median': t('stat_median', lang), 'std': t('stat_std', lang),
+                'var': t('stat_var', lang), 'min': t('stat_min', lang), 'max': t('stat_max', lang),
+                'cv': t('stat_cv', lang), 'skew': t('stat_skew', lang), 'kurtosis': t('stat_kurtosis', lang),
+                'mode': t('stat_mode', lang), 'criterion': 'Critério' if lang == 'Portuguese' else 'Criterion'
             }
             desc_display = desc_df.rename(columns=rename_map)
             st.dataframe(desc_display)
             st.info("(Resultados anteriores preservados)" if is_pt else "(Previous results preserved)")
 
-    # 2 Normality tests - CORRIGIDO: Nomes completos
+    # 2 Normality
     if "norm" in options:
         st.subheader(t("norm", lang))
         if 'normality' not in results or st.button("Recalcular Testes de Normalidade" if is_pt else "Recalculate Normality Tests"):
             norm_df = normality_tests(df)
             if not norm_df.empty:
-                # Renomear colunas para nomes completos
                 norm_display = norm_df.copy()
                 norm_display = norm_display.rename(columns={
                     'shapiro_stat': t('stat_shapiro_stat', lang),
@@ -897,7 +810,7 @@ def main():
             st.dataframe(norm_display)
             st.info("(Resultados anteriores preservados)" if is_pt else "(Previous results preserved)")
 
-    # 3 Correlation - CORRIGIDO: Nomes completos
+    # 3 Correlation
     if "corr" in options:
         st.subheader(t("corr", lang))
         corr_method = st.selectbox("Method / Método", [
@@ -905,37 +818,24 @@ def main():
             (t('corr_spearman', lang), 'spearman')
         ], format_func=lambda x: x[0])
         
-        # Extrair o valor real (pearson ou spearman)
         corr_method_value = corr_method[1] if isinstance(corr_method, tuple) else corr_method
-        
-        # Verificar se precisa recalcular ou se já tem resultado
         corr_key = f'correlation_{corr_method_value}'
+        
         if corr_key not in results or st.button("Recalcular Correlação" if is_pt else "Recalculate Correlation"):
             corr_df = correlation_matrix(df, method=corr_method_value)
             st.dataframe(corr_df)
-            
-            # Determinar título apropriado
-            if corr_method_value == 'pearson':
-                title = t('corr_pearson', lang)
-            else:
-                title = t('corr_spearman', lang)
-                
+            title = t('corr_pearson', lang) if corr_method_value == 'pearson' else t('corr_spearman', lang)
             st.plotly_chart(plot_heatmap_interactive(corr_df, title=title), use_container_width=True)
             results[corr_key] = corr_df
             st.session_state["analysis_results"] = results
         elif corr_key in results:
             corr_df = results[corr_key]
             st.dataframe(corr_df)
-            
-            if corr_method_value == 'pearson':
-                title = t('corr_pearson', lang)
-            else:
-                title = t('corr_spearman', lang)
-                
+            title = t('corr_pearson', lang) if corr_method_value == 'pearson' else t('corr_spearman', lang)
             st.plotly_chart(plot_heatmap_interactive(corr_df, title=title), use_container_width=True)
             st.info("(Resultados anteriores preservados)" if is_pt else "(Previous results preserved)")
 
-    # 4 ANOVA / Levene - CORRIGIDO: Nomes completos
+    # 4 ANOVA
     if "anova" in options:
         st.subheader(t("anova", lang))
         if len(cat_cols) == 0:
@@ -943,23 +843,16 @@ def main():
         else:
             group_col = st.selectbox("Group (categorical) / Coluna grupo", options=[None] + cat_cols)
             value_col = st.selectbox("Value (numeric) / Variável numérica", options=numeric_cols)
-            
-            # Usar session_state para controlar o clique do botão
             if 'anova_params' not in st.session_state:
                 st.session_state['anova_params'] = {'group_col': None, 'value_col': None}
             
-            # Botão para executar ANOVA
             run_anova_button = st.button("Run ANOVA / Executar ANOVA")
-            
             if run_anova_button:
                 if group_col is None:
                     st.warning("Select a group column" if not is_pt else "Selecione uma coluna de grupo")
                 else:
                     try:
-                        # Salvar parâmetros no session_state
                         st.session_state['anova_params'] = {'group_col': group_col, 'value_col': value_col}
-                        
-                        # Levene
                         lev_res = None
                         try:
                             groups = [g[value_col].dropna().values for _, g in df.groupby(group_col)]
@@ -968,7 +861,7 @@ def main():
                             st.write("Teste de Levene / Levene Test:", lev_res)
                         except Exception as e:
                             st.warning(f"Levene error / Erro no teste de Levene: {e}")
-                        # ANOVA or Kruskal depending on assumptions
+                        
                         normal_by_group = {}
                         for name, group in df.groupby(group_col):
                             s = group[value_col].dropna()
@@ -981,18 +874,18 @@ def main():
                                 p = np.nan
                             normal_by_group[name] = p
                         st.write("Normalidade por grupo (valores-p) / Normality by group (p-values):", normal_by_group)
+                        
                         all_normal = all([p is not None and not np.isnan(p) and p>0.05 for p in normal_by_group.values()])
                         levene_ok = (lev_res is not None and lev_res.get('pvalue',0)>0.05)
+                        
                         if all_normal and levene_ok:
                             st.success("Parametric assumptions OK — ANOVA recommended / Suposições paramétricas OK — ANOVA recomendada")
                             model, anova_tbl = anova_oneway(df, group_col, value_col)
-                            # Renomear colunas para nomes completos
                             anova_display = anova_tbl.copy()
                             if "PR(>F)" in anova_display.columns:
                                 anova_display = anova_display.rename(columns={"PR(>F)": t('anova_pvalue', lang)})
                             st.dataframe(anova_display)
                             results['anova'] = anova_tbl
-                            # Tukey if significant
                             p_anova = anova_tbl["PR(>F)"].iloc[0] if "PR(>F)" in anova_tbl.columns else None
                             if p_anova is not None and p_anova < 0.05:
                                 st.write("ANOVA significant / ANOVA significativa. Running Tukey HSD / Executando teste de Tukey HSD")
@@ -1004,12 +897,9 @@ def main():
                             kw = kruskal_test(df, group_col, value_col)
                             st.write("Teste de Kruskal-Wallis / Kruskal-Wallis Test:", kw)
                             results['kruskal'] = kw
-                        
                         st.session_state["analysis_results"] = results
                     except Exception as e:
                         st.error(f"ANOVA error / Erro na ANOVA: {e}")
-            
-            # Mostrar resultados anteriores se existirem
             elif 'anova' in results and st.session_state['anova_params']['group_col'] is not None:
                 st.info("Resultados da ANOVA anteriores:" if is_pt else "Previous ANOVA results:")
                 anova_tbl = results['anova']
@@ -1017,16 +907,14 @@ def main():
                 if "PR(>F)" in anova_display.columns:
                     anova_display = anova_display.rename(columns={"PR(>F)": t('anova_pvalue', lang)})
                 st.dataframe(anova_display)
-                
                 if 'tukey' in results:
                     st.write("Resultados do Tukey HSD anteriores:" if is_pt else "Previous Tukey HSD results:")
                     st.dataframe(results['tukey'])
-                
                 if 'kruskal' in results:
                     st.write("Resultados do Kruskal-Wallis anteriores:" if is_pt else "Previous Kruskal-Wallis results:")
                     st.write(results['kruskal'])
 
-    # 5 Non-parametric (Mann-Whitney)
+    # 5 Non-param
     if "nonparam" in options:
         st.subheader(t("nonparam", lang))
         if len(cat_cols) and len(numeric_cols):
@@ -1049,7 +937,7 @@ def main():
                 st.info("Resultados do Kruskal-Wallis anteriores:" if is_pt else "Previous Kruskal-Wallis results:")
                 st.write(results['kruskal_np'])
 
-    # 6 Regression - CORRIGIDO: Nomes completos das métricas
+    # 6 Regression
     if "reg" in options:
         st.subheader(t("reg", lang))
         if len(numeric_cols) >= 2:
@@ -1068,8 +956,6 @@ def main():
                         st.session_state['regression_params'] = {'y_col': y_col, 'x_cols': x_cols}
                         model, metrics, vif, resid, fitted, cooks = linear_regression(df, y_col, x_cols)
                         st.text(model.summary().as_text())
-                        
-                        # Exibir métricas com nomes completos
                         metrics_display = {
                             t('reg_r2', lang): metrics.get('r2', ''),
                             t('reg_adj_r2', lang): metrics.get('adj_r2', ''),
@@ -1080,7 +966,6 @@ def main():
                             'Max Cook\'s distance / Máxima distância de Cook': metrics.get('max_cooks_distance', '')
                         }
                         st.json(metrics_display)
-                        
                         if vif:
                             st.write("VIF (Variance Inflation Factor) / Fator de Inflação de Variância:", vif)
                         fig = px.scatter(x=fitted, y=resid, labels={'x':'Fitted / Ajustado','y':'Residuals / Resíduos'}, title="Residuals vs Fitted / Resíduos vs Ajustado")
@@ -1109,7 +994,7 @@ def main():
         else:
             st.info("At least 2 numeric columns required for regression / Pelo menos 2 colunas numéricas são necessárias para regressão")
 
-    # 7 Monte Carlo - CORRIGIDO: Nomes completos
+    # 7 Monte Carlo
     if "mc" in options:
         st.subheader(t("mc", lang))
         mc_iters = st.number_input("Iterations / Iterações", min_value=100, max_value=20000, value=1000, step=100)
@@ -1125,15 +1010,12 @@ def main():
             else:
                 st.session_state['mc_params'] = {'iterations': mc_iters, 'noise_frac': noise_frac}
                 mc_summary, mc_arr = monte_carlo(df_numeric, n_iter=mc_iters, noise_frac=noise_frac)
-                # Renomear colunas para nomes completos
                 mc_display = mc_summary.rename(columns={
                     'mean_score': t('mc_mean_score', lang),
                     'std_score': t('mc_std_score', lang)
                 })
                 st.dataframe(mc_display)
-                title_pt = "Distribuição Monte Carlo (primeira alternativa)"
-                title_en = "Monte Carlo distribution (first alternative)"
-                title = title_pt if is_pt else title_en
+                title = "Distribuição Monte Carlo (primeira alternativa)" if is_pt else "Monte Carlo distribution (first alternative)"
                 fig_mc = px.histogram(mc_arr[:,0], nbins=50, title=title)
                 st.plotly_chart(fig_mc, use_container_width=True)
                 results['montecarlo'] = mc_summary
@@ -1147,7 +1029,6 @@ def main():
             })
             st.dataframe(mc_display)
 
-    # Export buttons
     st.header(t("export", lang))
     col1, col2, col3 = st.columns(3)
 
@@ -1155,37 +1036,25 @@ def main():
     desc_df = results.get('descriptive', pd.DataFrame())
     normal_df = results.get('normality', pd.DataFrame())
     
-    # Obter todas as correlações calculadas
     corr_dfs = {}
     for key in results.keys():
         if key.startswith('correlation_'):
             corr_dfs[key] = results[key]
-    
-    # Usar a primeira correlação disponível para exportação
-    corr_df = pd.DataFrame()
-    if corr_dfs:
-        corr_df = list(corr_dfs.values())[0]
+    corr_df = list(corr_dfs.values())[0] if corr_dfs else pd.DataFrame()
     
     anova_tbl = results.get('anova', None)
     reg_metrics = results.get('regression', None)
     mc_summary = results.get('montecarlo', None)
 
     with col1:
-        # CORREÇÃO: Botão único para download do Excel
         if desc_df is not None and not desc_df.empty:
             sheets = {"decision_matrix": decision_df.reset_index()}
-            if not desc_df.empty:
-                sheets["descriptive"] = desc_df
-            if not normal_df.empty:
-                sheets["normality"] = normal_df.reset_index()
-            if not corr_df.empty:
-                sheets["correlation"] = corr_df
-            if anova_tbl is not None:
-                sheets["anova"] = anova_tbl.reset_index()
-            if reg_metrics is not None:
-                sheets["regression_metrics"] = pd.DataFrame([reg_metrics])
-            if mc_summary is not None:
-                sheets["monte_carlo"] = mc_summary.reset_index()
+            if not desc_df.empty: sheets["descriptive"] = desc_df
+            if not normal_df.empty: sheets["normality"] = normal_df.reset_index()
+            if not corr_df.empty: sheets["correlation"] = corr_df
+            if anova_tbl is not None: sheets["anova"] = anova_tbl.reset_index()
+            if reg_metrics is not None: sheets["regression_metrics"] = pd.DataFrame([reg_metrics])
+            if mc_summary is not None: sheets["monte_carlo"] = mc_summary.reset_index()
             
             xbytes = build_excel_bytes(sheets)
             st.download_button(
@@ -1205,11 +1074,7 @@ def main():
             }
             json_str = build_json(decision_df, desc_df, normal_df, extra)
             st.download_button(
-                "Download .json", 
-                json_str, 
-                file_name="mcda_results.json", 
-                mime="application/json",
-                key="json_download"
+                "Download .json", json_str, file_name="mcda_results.json", mime="application/json", key="json_download"
             )
 
     with col3:
@@ -1226,19 +1091,13 @@ def main():
                     save_static_hist(df, sel_col, hist_png)
                     save_static_heatmap(df.select_dtypes(include=[np.number]), heat_png)
             except Exception:
-                box_png = hist_png = heat_png = None
+                pass
             pdf_bytes = generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, hist_png, heat_png, anova_table=anova_tbl, reg_metrics=reg_metrics, mc_summary=mc_summary)
             st.download_button(
-                "Download PDF", 
-                pdf_bytes, 
-                file_name="mcda_report_uff_ufrn.pdf", 
-                mime="application/pdf",
-                key="pdf_download"
+                "Download PDF", pdf_bytes, file_name="mcda_report_uff_ufrn.pdf", mime="application/pdf", key="pdf_download"
             )
 
-    # -----------------------
-    # AI manual analysis trigger (user selected manual mode)
-    # -----------------------
+    # AI Section
     st.markdown("---")
     st.subheader(t("ai_button", lang))
     st.write(t("ai_help", lang))
@@ -1247,82 +1106,53 @@ def main():
     if client is None:
         st.warning(t("ai_not_configured", lang))
     else:
-        # prepare a concise results summary to send to the AI when asked
-        # Usar TODOS os resultados disponíveis, não apenas os recém-calculados
         results_summary = {}
-        
-        # Incluir todos os resultados disponíveis do session_state
-        if 'descriptive' in results:
-            results_summary['descriptive'] = results['descriptive']
-        
-        # Incluir todas as correlações
+        if 'descriptive' in results: results_summary['descriptive'] = results['descriptive']
         for key in results.keys():
             if key.startswith('correlation_'):
-                if 'correlation' not in results_summary:
-                    results_summary['correlation'] = results[key]
-                # Se houver múltiplas, usar a primeira
-        
-        if 'anova' in results:
-            results_summary['anova'] = results['anova']
-        if 'tukey' in results:
-            results_summary['tukey'] = results['tukey']
-        if 'kruskal' in results:
-            results_summary['kruskal'] = results['kruskal']
-        if 'kruskal_np' in results:
-            results_summary['kruskal_np'] = results['kruskal_np']
-        if 'regression' in results:
-            results_summary['regression'] = results['regression']
-        if 'montecarlo' in results:
-            results_summary['montecarlo'] = results['montecarlo']
+                if 'correlation' not in results_summary: results_summary['correlation'] = results[key]
+        if 'anova' in results: results_summary['anova'] = results['anova']
+        if 'tukey' in results: results_summary['tukey'] = results['tukey']
+        if 'kruskal' in results: results_summary['kruskal'] = results['kruskal']
+        if 'kruskal_np' in results: results_summary['kruskal_np'] = results['kruskal_np']
+        if 'regression' in results: results_summary['regression'] = results['regression']
+        if 'montecarlo' in results: results_summary['montecarlo'] = results['montecarlo']
         
         if st.button(t("ai_button", lang)):
             with st.spinner("Generating AI analysis..." if not is_pt else "Gerando análise com IA..."):
                 ai_text = analyze_with_ai(client, lang, results_summary)
                 if ai_text is None:
-                    st.error("AI not available / IA não disponível")
+                    st.error("AI not available")
                 elif ai_text.startswith("❌"):
                     st.error(ai_text)
                 else:
                     st.session_state["ai_last_analysis"] = ai_text
                     st.session_state["ai_enabled"] = True
                     st.success("AI analysis generated" if not is_pt else "Análise com IA gerada")
-                    st.subheader("📊 AI Analysis / Análise da IA")
+                    st.subheader("📊 AI Analysis")
                     st.info(ai_text)
-                    # reset chat history
                     st.session_state["ai_chat_history"] = []
 
-    # Chat: only when ai_enabled
     if st.session_state.get("ai_enabled", False) and client is not None:
         st.markdown("---")
         st.header(t("chat_header", lang))
-        # show history
         for msg in st.session_state["ai_chat_history"]:
             try:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
             except Exception:
-                # fallback plain write
                 st.write(f"{msg['role']}: {msg['content']}")
-        # user input
         prompt = st.chat_input("Pergunte sobre a análise..." if is_pt else "Ask about the analysis...")
         if prompt:
-            # append user message to history
             st.session_state["ai_chat_history"].append({"role":"user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
             with st.spinner("IA pensando..." if is_pt else "AI thinking..."):
                 resp = chat_with_ai(client, lang, prompt)
-            if resp.get("error"):
-                assistant_text = f"❌ Error: {resp.get('error')}"
-                st.session_state["ai_chat_history"].append({"role":"assistant", "content": assistant_text})
-                with st.chat_message("assistant"):
-                    st.markdown(assistant_text)
-            else:
-                assistant_text = resp.get("answer", "")
-                st.session_state["ai_chat_history"].append({"role":"assistant", "content": assistant_text})
-                with st.chat_message("assistant"):
-                    st.markdown(assistant_text)
-
+            assistant_text = resp.get("answer", "") if not resp.get("error") else f"❌ Error: {resp.get('error')}"
+            st.session_state["ai_chat_history"].append({"role":"assistant", "content": assistant_text})
+            with st.chat_message("assistant"):
+                st.markdown(assistant_text)
     elif not st.session_state.get("ai_enabled", False):
         st.info("💡 " + ("Execute a análise com IA (botão) para abrir o chat." if is_pt else "Run the AI analysis (button) to enable the chat."))
 
