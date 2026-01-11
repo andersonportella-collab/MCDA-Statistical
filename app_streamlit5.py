@@ -21,10 +21,13 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Image as RLImage
+
+# ReportLab imports
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Image as RLImage, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.lib.units import inch
 
 # OpenAI client — optional
 try:
@@ -328,7 +331,7 @@ def save_static_heatmap(df_numeric, filename):
     return filename
 
 # -----------------------
-# Export: Excel / JSON / PDF
+# Export: Excel / JSON / PDF (CORRIGIDO PARA LANDSCAPE E FORMATAÇÃO)
 # -----------------------
 def build_excel_bytes(sheets_dict):
     buf = io.BytesIO()
@@ -364,23 +367,26 @@ def build_json(decision_df, desc_df, normal_df, extra):
 
 def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, hist_png, heat_png, anova_table=None, reg_metrics=None, mc_summary=None):
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=72, bottomMargin=36)
+    # MUDANÇA: Landscape (Paisagem) para caber tabelas largas
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    
     styles = getSampleStyleSheet()
-    heading = ParagraphStyle("Heading", parent=styles["Heading1"], alignment=1, spaceAfter=12)
+    heading = ParagraphStyle("Heading", parent=styles["Heading1"], alignment=1, spaceAfter=12, fontSize=14)
     normal = styles["Normal"]
-    small = ParagraphStyle("Small", parent=styles["Normal"], fontSize=9)
+    small = ParagraphStyle("Small", parent=styles["Normal"], fontSize=8, leading=10)
     story = []
 
     if os.path.exists(LOGO_PATH):
         try:
-            img = RLImage(LOGO_PATH, width=180, height=180)
+            # Imagem menor para não ocupar muito espaço
+            img = RLImage(LOGO_PATH, width=150, height=150) 
             story.append(img)
         except Exception:
             pass
 
     story.append(Paragraph(f"<b>{t('pdf_title', lang)}</b>", heading))
     inst_text = INSTITUTION_LINE.replace("\n", "<br/>") 
-    story.append(Paragraph(f"{inst_text}", ParagraphStyle("inst", parent=styles["Normal"], alignment=1)))
+    story.append(Paragraph(f"{inst_text}", ParagraphStyle("inst", parent=styles["Normal"], alignment=1, fontSize=8)))
     story.append(Spacer(1, 6))
     story.append(Paragraph(f"{t('pdf_subtitle', lang)} — {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", small))
     story.append(Spacer(1, 12))
@@ -390,9 +396,20 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
     story.append(Paragraph(f"Number of numeric criteria: {len(decision_df.select_dtypes(include=[np.number]).columns)}", normal))
     story.append(Spacer(1,8))
 
+    # ESTILO DE TABELA GERAL (Fonte reduzida)
+    # Define um estilo que usa fonte menor (8pt) para caber mais colunas
+    general_table_style = [
+        ('GRID', (0,0), (-1,-1), 0.25, colors.grey),
+        ('FONTSIZE', (0,0), (-1,-1), 8),  # Fonte 8pt para o conteúdo
+        ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold')
+    ]
+
     story.append(Paragraph("<b>Descriptive statistics / Estatística descritiva</b>", styles["Heading3"]))
     try:
-        desc_show = desc_df.reset_index().head(10)
+        desc_show = desc_df.reset_index().head(15) # Mostra mais linhas se couber
         rename_map = {
             'mean': 'Média', 'median': 'Mediana', 'std': 'Desvio Padrão',
             'var': 'Variância', 'min': 'Mínimo', 'max': 'Máximo',
@@ -400,8 +417,18 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
             'kurtosis': 'Curtose', 'mode': 'Moda', 'criterion': 'Critério'
         }
         desc_show = desc_show.rename(columns=rename_map)
+        
+        # Converter todos os dados para string arredondada para economizar espaço
+        desc_show = desc_show.round(4).astype(str)
+        
         data_table = [desc_show.columns.tolist()] + desc_show.values.tolist()
-        tbl = Table(data_table, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey),('BACKGROUND',(0,0),(-1,0),colors.lightblue)])
+        
+        # Se houver muitas colunas, reduz ainda mais a fonte
+        t_style = list(general_table_style)
+        if len(desc_show.columns) > 8:
+             t_style.append(('FONTSIZE', (0,0), (-1,-1), 6.5)) # Fonte bem pequena se tabela for larga
+
+        tbl = Table(data_table, style=t_style, repeatRows=1)
         story.append(tbl)
     except Exception:
         story.append(Paragraph("No descriptive data", normal))
@@ -411,31 +438,39 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
     try:
         norm_show = normal_df.reset_index().head(20)
         norm_show = norm_show.rename(columns={'shapiro_stat': 'Estatística Shapiro-Wilk', 'shapiro_p': 'Valor-p Shapiro-Wilk', 'criterion': 'Critério'})
+        norm_show = norm_show.round(4).astype(str)
         data_norm = [norm_show.columns.tolist()] + norm_show.values.tolist()
-        n_tbl = Table(data_norm, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)])
+        n_tbl = Table(data_norm, style=general_table_style)
         story.append(n_tbl)
     except Exception:
         story.append(Paragraph("No normality results", normal))
     story.append(Spacer(1,12))
 
+    # Forçar quebra de página antes dos gráficos para organizar
+    story.append(PageBreak())
+
     story.append(Paragraph("<b>Plots / Gráficos</b>", styles["Heading3"]))
+    # Organizar gráficos em uma tabela invisível 2x2 se possível, ou sequencial
+    # Aqui faremos sequencial mas controlando o tamanho
     for png, caption in [(box_png, "Boxplot"), (hist_png, "Histogram"), (heat_png, "Correlation heatmap")]:
         if png and os.path.exists(png):
             try:
-                im = RLImage(png, width=400, height=250)
+                # Ajuste de tamanho para Landscape (maior largura disponível, menor altura)
+                im = RLImage(png, width=600, height=350) 
                 story.append(im)
                 story.append(Paragraph(caption, small))
-                story.append(Spacer(1,6))
+                story.append(Spacer(1,12))
             except Exception:
                 pass
-    story.append(Spacer(1,12))
+    
+    story.append(PageBreak())
 
     story.append(Paragraph("<b>Tests / Testes</b>", styles["Heading3"]))
     if anova_table is not None:
         try:
             a_show = anova_table.round(6).reset_index()
             data = [a_show.columns.tolist()] + a_show.values.tolist()
-            story.append(Table(data, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)]))
+            story.append(Table(data, style=general_table_style))
             story.append(Spacer(1,8))
         except Exception:
             pass
@@ -448,7 +483,8 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
             'durbin_watson': 'Estatística Durbin-Watson', 'max_cooks_distance': 'Máxima Distância de Cook'
         }
         reg_kv = [[reg_names_map.get(k, k), str(v)] for k,v in reg_metrics.items()]
-        story.append(Table(reg_kv, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)]))
+        # Tabela de métricas pode ser simples
+        story.append(Table(reg_kv, style=general_table_style))
     else:
         story.append(Paragraph("No regression performed / Nenhuma regressão realizada", normal))
     story.append(Spacer(1,12))
@@ -456,10 +492,11 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
     story.append(Paragraph("<b>Monte Carlo (sensitivity) / Monte Carlo (sensibilidade)</b>", styles["Heading3"]))
     if mc_summary is not None:
         try:
-            mc_show = mc_summary.head(20).reset_index()
+            mc_show = mc_summary.head(30).reset_index() # Mostra mais linhas
             mc_show = mc_show.rename(columns={'mean_score': 'Pontuação Média', 'std_score': 'Desvio Padrão da Pontuação', 'index': 'Alternativa'})
+            mc_show = mc_show.round(4).astype(str)
             data_mc = [mc_show.columns.tolist()] + mc_show.values.tolist()
-            story.append(Table(data_mc, style=[('GRID',(0,0),(-1,-1),0.25,colors.grey)]))
+            story.append(Table(data_mc, style=general_table_style))
         except Exception:
             pass
     else:
@@ -467,7 +504,7 @@ def generate_pdf_bytes(lang, decision_df, desc_df, normal_df, corr_df, box_png, 
 
     story.append(Spacer(1,12))
     story.append(Paragraph("Generated by app_streamlit.py", small))
-    story.append(Paragraph(inst_text, ParagraphStyle("inst", parent=styles["Normal"], alignment=1)))
+    story.append(Paragraph(inst_text, ParagraphStyle("inst", parent=styles["Normal"], alignment=1, fontSize=7)))
     
     doc.build(story)
     pdf_bytes = buf.getvalue()
@@ -726,11 +763,9 @@ def main():
     option_keys = list(analysis_options.keys())
     reverse_mapping = {v: k for k, v in analysis_options.items()}
     
-    # Armazenar as CHAVES (keys) no session_state, não os textos traduzidos
     if "selected_analysis_keys" not in st.session_state:
         st.session_state["selected_analysis_keys"] = ["desc", "norm", "corr"]
 
-    # Calcular quais labels devem aparecer marcados com base nas chaves salvas e idioma atual
     current_defaults = [
         analysis_options[k] for k in st.session_state["selected_analysis_keys"] 
         if k in analysis_options
@@ -742,10 +777,7 @@ def main():
         default=current_defaults
     )
     
-    # Atualizar session_state com as chaves correspondentes aos labels selecionados
     st.session_state["selected_analysis_keys"] = [reverse_mapping[label] for label in selected_labels]
-    
-    # Manter compatibilidade com variável 'options' usada abaixo
     options = st.session_state["selected_analysis_keys"]
     st.session_state["selected_analyses"] = options
 
